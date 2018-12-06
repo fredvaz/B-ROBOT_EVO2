@@ -19,7 +19,7 @@ The ROS package is in underdevelopment [here](https://github.com/fredvaz/self_ba
 
 #### Software
 
-- Simulink PID Simulation
+- Stability Control with Simulink for testing/debugging
 - ROS compatibility
 
 
