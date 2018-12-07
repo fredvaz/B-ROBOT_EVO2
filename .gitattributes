@@ -16,5 +16,6 @@
 *.rtf	 diff=astextplain
 *.RTF	 diff=astextplain
 
-# Main Language
-*.gs linguist-language=C
+# Language
+#*.gs linguist-language=c
+Blockly/* linguist-vendored
