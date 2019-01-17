@@ -9,6 +9,9 @@ float stabilityPDControl(float DT, float input, float setPoint,  float Kp, float
   float error;
   float output;
 
+  int16_t data = 0;
+  int8_t data_w[2];
+
   error = setPoint - input;
 
   // Kd is implemented in two parts
@@ -16,13 +19,95 @@ float stabilityPDControl(float DT, float input, float setPoint,  float Kp, float
   //    And the second using the setpoint to make it a bit more agressive   setPoint-setPoint(t-1)
   float Kd_setPoint = constrain((setPoint - setPointOld), -8, 8); // We limit the input part...
   output = Kp * error + (Kd * Kd_setPoint - Kd * (input - PID_errorOld)) / DT;
+
+  // BEGIN PID TEST - ADDED
+  // PID_errorSum += constrain(error, -ITERM_MAX_ERROR, ITERM_MAX_ERROR);
+  // PID_errorSum = constrain(PID_errorSum, -ITERM_MAX, ITERM_MAX);
+  //
+  // float _Kp = 0.4;
+  // float _Ki = 0.05;
+  // float _Kd = 0.15;
+  //
+  // output = _Kp * error + _Ki * PID_errorSum * DT + (_Kd * Kd_setPoint - _Kd * (input - PID_errorOld)) / DT;
+  // // END PID TEST
+  //
+  // END - ADDED
+
   //Serial.print(Kd*(error-PID_errorOld));Serial.print("\t");
   //PID_errorOld2 = PID_errorOld;
   PID_errorOld = input;  // error for Kd is only the input component
   setPointOld = setPoint;
+
+  /*                                DEBUG                                     */
+  //Encode data
+  data = int16_t(input*1000);
+  // Prepare data
+  data_w[0] = data;
+  data_w[1] = data >> 8;
+  // Send data - Simulink waints 2 Bytes (int16)
+  Serial.write(data_w[0]);
+  Serial.write(data_w[1]);
+
+  //Encode data
+  data = int16_t(output*1000);
+  // Prepare data
+  data_w[0] = data;
+  data_w[1] = data >> 8;
+  // Send data - Simulink waints 2 Bytes (int16)
+  Serial.write(data_w[0]);
+  Serial.write(data_w[1]);
+
+  // Waits for the transmission of outgoing serial data to complete
+  //Serial.flush();
+  /*                                DEBUG                                     */
+
   return (output);
 }
 
+// Stability Control with Simulink for testing/debugging. DT in seconds
+float stabilityControlWithSimulink(float DT, float input, float setPoint)
+{
+  int16_t data = 0;
+  int8_t data_w[2];
+  int8_t incomingByte[4];
+  float output = 0.0;
+
+  // We are wating for 2 Bytes (int16) from Simulink
+  int i = 0;
+  while (Serial.available() > 0) { // if
+    // read the incoming byte:
+    incomingByte[i] = Serial.read();
+    i++;
+  }
+  // Simulink int16 2 Bytes: 2º 0000 0001 1º 1100 1000 = 456
+  data = (incomingByte[1]&0xFF) << 8 | (incomingByte[0]&0xFF);
+
+  // Decode data
+  output = float(data*0.001);
+
+  //Encode data
+  data = int16_t(input*1000);
+  // Prepare data
+  data_w[0] = data;
+  data_w[1] = data >> 8;
+  // Send data - Simulink waints 2 Bytes (int16)
+  Serial.write(data_w[0]);
+  Serial.write(data_w[1]);
+
+  //Encode data
+  data = int16_t(setPoint*1000);
+  // Prepare data
+  data_w[0] = data;
+  data_w[1] = data >> 8;
+  // Send data - Simulink waints 2 Bytes (int16)
+  Serial.write(data_w[0]);
+  Serial.write(data_w[1]);
+
+  // Waits for the transmission of outgoing serial data to complete
+  //Serial.flush();
+
+  return (output);
+}
 
 // PI controller implementation (Proportional, integral). DT in seconds
 float speedPIControl(float DT, int16_t input, int16_t setPoint,  float Kp, float Ki)
@@ -71,13 +156,13 @@ ISR(TIMER3_COMPA_vect)
   if (dir_M2 == 0) // If we are not moving we dont generate a pulse
     return;
   // We generate 1us STEP pulse
-  SET(PORTD, 6); // STEP MOTOR 2
+  SET(PORTB, 7); // STEP MOTOR 2
   //delay_1us();
   if (dir_M2 > 0)
     steps2--;
   else
     steps2++;
-  CLR(PORTD, 6);
+  CLR(PORTB, 7);
 }
 
 
@@ -162,13 +247,13 @@ void setMotorSpeedM2(int16_t tspeed)
   {
     timer_period = 2000000 / speed; // 2Mhz timer
     dir_M2 = 1;
-    CLR(PORTC, 6);   // Dir Motor2 (Forward)
+    CLR(PORTD, 6);   // Dir Motor2 (Forward)
   }
   else
   {
     timer_period = 2000000 / -speed;
     dir_M2 = -1;
-    SET(PORTC, 6);  // DIR Motor 2
+    SET(PORTD, 6);  // DIR Motor 2
   }
   if (timer_period > 65535)   // Check for minimun speed (maximun period without overflow)
     timer_period = ZERO_SPEED;
@@ -178,4 +263,3 @@ void setMotorSpeedM2(int16_t tspeed)
   if (TCNT3 > OCR3A)
     TCNT3 = 0;
 }
-

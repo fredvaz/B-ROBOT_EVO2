@@ -39,12 +39,24 @@
 // OSC controls:
 //    fader1: Throttle (0.0-1.0) OSC message: /1/fader1
 //    fader2: Steering (0.0-1.0) OSC message: /1/fader2
-//    push1: Move servo arm (and robot raiseup) OSC message /1/push1 
+//    push1: Move servo arm (and robot raiseup) OSC message /1/push1
 //    if you enable the touchMessage on TouchOSC options, controls return to center automatically when you lift your fingers
 //    PRO mode (PRO button). On PRO mode steering and throttle are more aggressive
 //    PAGE2: PID adjustements [optional][dont touch if you dont know what you are doing...;-) ]
 
 #include <Wire.h>
+
+// Uncomment this line to use SIMULINK PID SIMULATION
+//#define SIMULINK
+
+// Uncomment this line to use ROS compatibility
+#define ROS
+
+// Uncomment this line to use Servo Motors/Robot Arms
+//#define SERVOS_ON
+
+// Uncomment this line to use WIFI
+//#define WIFI_ON
 
 // Uncomment this lines to connect to an external Wifi router (join an existing Wifi network)
 //#define EXTERNAL_WIFI
@@ -66,25 +78,26 @@
 #define MAX_TARGET_ANGLE_PRO 26   // Max recommended value: 32
 
 // Default control terms for EVO 2
-#define KP 0.32       
-#define KD 0.050     
-#define KP_THROTTLE 0.080 
-#define KI_THROTTLE 0.1 
-#define KP_POSITION 0.06  
-#define KD_POSITION 0.45  
+#define KP 0.32 //0.4 //0.32 | dt 25ms = 0.8
+#define KD 0.05 //0.15 //0.050 | dt 25ms = 0.175
+#define KP_THROTTLE 0.07 //0.080, 0.01 | dt 25ms =  .... 0.107842223159323 ... 0.07
+#define KI_THROTTLE 0.025 //0.1, 0.05 | dt 25ms = ... 0.0712804465476108 ... 0.025
+#define KP_POSITION 0.01 //0.06
+#define KD_POSITION 0.02 //0.45
 //#define KI_POSITION 0.02
 
 // Control gains for raiseup (the raiseup movement requiere special control parameters)
-#define KP_RAISEUP 0.1   
-#define KD_RAISEUP 0.16   
+#define KP_RAISEUP 0.1
+#define KD_RAISEUP 0.16
 #define KP_THROTTLE_RAISEUP 0   // No speed control on raiseup
 #define KI_THROTTLE_RAISEUP 0.0
 
 #define MAX_CONTROL_OUTPUT 500
-#define ITERM_MAX_ERROR 30   // Iterm windup constants for PI control 
+#define ITERM_MAX_ERROR 30   // Iterm windup constants for PI control
 #define ITERM_MAX 10000
 
 #define ANGLE_OFFSET 0.0  // Offset angle for balance (to compensate robot own weight distribution)
+                          // 0.0 |  dt 25ms = 1.75 .... Positico Para trás
 
 // Servo definitions
 #define SERVO_AUX_NEUTRO 1500  // Servo neutral position
@@ -95,8 +108,8 @@
 #define SERVO2_RANGE 1400
 
 // Telemetry
-#define TELEMETRY_BATTERY 1
-#define TELEMETRY_ANGLE 1
+#define TELEMETRY_BATTERY 0
+#define TELEMETRY_ANGLE 0
 //#define TELEMETRY_DEBUG 1  // Dont use TELEMETRY_ANGLE and TELEMETRY_DEBUG at the same time!
 
 #define ZERO_SPEED 65535
@@ -201,15 +214,15 @@ void setup()
   pinMode(4, OUTPUT); // ENABLE MOTORS
   pinMode(7, OUTPUT); // STEP MOTOR 1 PORTE,6
   pinMode(8, OUTPUT); // DIR MOTOR 1  PORTB,4
-  pinMode(12, OUTPUT); // STEP MOTOR 2 PORTD,6
-  pinMode(5, OUTPUT); // DIR MOTOR 2  PORTC,6
+  pinMode(11, OUTPUT); // STEP MOTOR 2 PORTB,7
+  pinMode(12, OUTPUT); // DIR MOTOR 2  PORTD,6
   digitalWrite(4, HIGH);  // Disbale motors
   pinMode(10, OUTPUT);  // Servo1 (arm)
   pinMode(13, OUTPUT);  // Servo2
 
   Serial.begin(115200); // Serial output to console
   Serial1.begin(115200);
-  OSC_init();
+  //OSC_init();
 
   // Initialize I2C bus (MPU6050 is connected via I2C)
   Wire.begin();
@@ -219,12 +232,14 @@ void setup()
 #else
   delay(1000);
 #endif
-  Serial.println("JJROBOTS");
+  //Serial.println("JJROBOTS");
   delay(200);
-  Serial.println("Don't move for 10 sec...");
+  //Serial.println("Don't move for 10 sec...");
   MPU6050_setup();  // setup MPU6050 IMU
   delay(500);
 
+
+#ifdef WIFI_ON
   // With the new ESP8266 WIFI MODULE WE NEED TO MAKE AN INITIALIZATION PROCESS
   Serial.println("WIFI init");
   Serial1.flush();
@@ -275,20 +290,25 @@ void setup()
   strcpy(Telemetry,"AT+CIPSTART=\"UDP\",\"");
   strcat(Telemetry,TELEMETRY);
   strcat(Telemetry,"\",2223,2222,0");
-  ESPsendCommand(Telemetry, "OK", 3); 
+  ESPsendCommand(Telemetry, "OK", 3);
+#endif
 
   // Calibrate gyros
   MPU6050_calibrate();
 
+#ifdef WIFI_ON
   ESPsendCommand("AT+CIPSEND", ">", 2); // Start transmission (transparent mode)
+#endif
 
+#ifdef SERVOS_ON
   // Init servos
   Serial.println("Servo init");
   BROBOT_initServo();
   BROBOT_moveServo1(SERVO_AUX_NEUTRO);
+#endif
 
   // STEPPER MOTORS INITIALIZATION
-  Serial.println("Stepers init");
+  //Serial.println("Steppers init");
   // MOTOR1 => TIMER1
   TCCR1A = 0;                       // Timer1 CTC mode 4, OCxA,B outputs disconnected
   TCCR1B = (1 << WGM12) | (1 << CS11); // Prescaler=8, => 2Mhz
@@ -315,32 +335,40 @@ void setup()
   {
     setMotorSpeedM1(5);
     setMotorSpeedM2(5);
+  #ifdef SERVOS_ON
     BROBOT_moveServo1(SERVO_AUX_NEUTRO + 100);
     BROBOT_moveServo2(SERVO2_NEUTRO + 100);
+  #endif
     delay(200);
     setMotorSpeedM1(-5);
     setMotorSpeedM2(-5);
+  #ifdef SERVOS_ON
     BROBOT_moveServo1(SERVO_AUX_NEUTRO - 100);
     BROBOT_moveServo2(SERVO2_NEUTRO - 100);
+  #endif
     delay(200);
   }
+#ifdef SERVOS_ON
   BROBOT_moveServo1(SERVO_AUX_NEUTRO);
   BROBOT_moveServo2(SERVO2_NEUTRO);
+#endif
 
- #if TELEMETRY_BATTERY==1
+#if TELEMETRY_BATTERY==1
   BatteryValue = BROBOT_readBattery(true);
   Serial.print("BATT:");
   Serial.println(BatteryValue);
 #endif
-  Serial.println("BROBOT by JJROBOTS v2.82");
-  Serial.println("Start...");
+  // Serial.println("BROBOT by JJROBOTS v2.82");
+  // Serial.println("Start...");
   timer_old = micros();
+  //timer_old = millis();
 }
 
 
 // MAIN LOOP
 void loop()
 {
+#ifdef WIFI_ON
   OSC_MsgRead();  // Read UDP OSC messages
   if (OSCnewMessage)
   {
@@ -408,16 +436,31 @@ void loop()
     Serial.println(steering);
 #endif
   } // End new OSC message
+#endif
+
+  /*                        TO FIX: Control with ROS                          */
+  positionControlMode = false; //false;
+  throttle = 0;
+  steering = 0;
 
   timer_value = micros();
+// timer_value = millis();
 
-  // New IMU data?
+// LOOP - ADDED
+// dt = 0.025;
+
+// if((timer_value - timer_old) >= dt*1000){ // 50Hz, 0.1*100000.0
+//
+//   timer_old = timer_value;
+
+  // New IMU data? CONTROL LOOP
   if (MPU6050_newData())
   {
     MPU6050_read_3axis();
     loop_counter++;
     slow_loop_counter++;
     dt = (timer_value - timer_old) * 0.000001; // dt in seconds
+    //dt = (timer_value - timer_old) * 0.001; // dt in seconds - ADDED
     timer_old = timer_value;
 
     angle_adjusted_Old = angle_adjusted;
@@ -426,7 +469,7 @@ void loop()
     angle_adjusted = MPU_sensor_angle + angle_offset;
     if ((MPU_sensor_angle>-15)&&(MPU_sensor_angle<15))
       angle_adjusted_filtered = angle_adjusted_filtered*0.99 + MPU_sensor_angle*0.01;
-      
+
 #if DEBUG==1
     Serial.print(dt);
     Serial.print(" ");
@@ -437,10 +480,13 @@ void loop()
     Serial.println(angle_adjusted_filtered);
 #endif
     //Serial.print("\t");
+    // Serial.print("Time: ");
+    // Serial.println(dt * 1000);
 
     // We calculate the estimated robot speed:
     // Estimated_Speed = angular_velocity_of_stepper_motors(combined) - angular_velocity_of_robot(angle measured by IMU)
-    actual_robot_speed = (speed_M1 + speed_M2) / 2; // Positive: forward  
+    actual_robot_speed = (speed_M1 + speed_M2) / 2; // Positive: forward
+    // speed_M1 and speed_M2 are global and computed from setMotorSpeedM1 and setMotorSpeedM2
 
     int16_t angular_velocity = (angle_adjusted - angle_adjusted_Old) * 25.0; // 25 is an empirical extracted factor to adjust for real units
     int16_t estimated_speed = -actual_robot_speed + angular_velocity;
@@ -469,7 +515,8 @@ void loop()
     //    input:user throttle(robot speed), variable: estimated robot speed, output: target robot angle to get the desired speed
     target_angle = speedPIControl(dt, estimated_speed_filtered, throttle, Kp_thr, Ki_thr);
     target_angle = constrain(target_angle, -max_target_angle, max_target_angle); // limited output
-
+    // TEST - ADDED
+    // target_angle = -1.0;
 
 #if DEBUG==3
     Serial.print(angle_adjusted);
@@ -482,8 +529,26 @@ void loop()
     // Stability control (100Hz loop): This is a PD controller.
     //    input: robot target angle(from SPEED CONTROL), variable: robot angle, output: Motor speed
     //    We integrate the output (sumatory), so the output is really the motor acceleration, not motor speed.
+#ifdef SIMULINK
+    control_output += stabilityControlWithSimulink(dt, angle_adjusted, target_angle); // angle_adjusted_filtered
+    control_output = constrain(control_output, -MAX_CONTROL_OUTPUT, MAX_CONTROL_OUTPUT); // Limit max output from control
+#else
     control_output += stabilityPDControl(dt, angle_adjusted, target_angle, Kp, Kd);
     control_output = constrain(control_output, -MAX_CONTROL_OUTPUT, MAX_CONTROL_OUTPUT); // Limit max output from control
+#endif
+    // /* ---------------------------- ADDED ------------------------------------*/
+    // // WIHTOUT SPEED CONTROL
+    // // The self balancing point is adjusted when there is not forward or backwards movement
+    // // This way the robot will always find it's balancing point
+    // // error_ = target_angle - angle_adjusted;
+    // // (-0.5 < error_) && (error_ < 0.5) - em baixos erros
+    // if(true){ // pid_setpoint == 0.0
+    //   if(control_output < 0)
+    //     target_angle += 0.0015;                // Increase the self_balance_pid_setpoint if the robot is still moving forewards
+    //   if(pid_output > 0)
+    //     target_angle -= 0.0015;                //Decrease the self_balance_pid_setpoint if the robot is still moving backwards
+    // }
+    // /* -----------------------------------------------------------------------*/
 
     // The steering part from the user is injected directly to the output
     motor1 = control_output + steering;
@@ -525,6 +590,8 @@ void loop()
       steering = 0;
     }
 
+  #ifdef SERVOS_ON
+    // It's necessary move Servo Timers to Arduino MEGA
     // Push1 Move servo arm
     if (OSCpush[0])  // Move arm
     {
@@ -538,6 +605,7 @@ void loop()
 
     // Servo2
     BROBOT_moveServo2(SERVO2_NEUTRO + (OSCfader[2] - 0.5) * SERVO2_RANGE);
+  #endif
 
     // Normal condition?
     if ((angle_adjusted < 56) && (angle_adjusted > -56))
@@ -556,7 +624,7 @@ void loop()
     }
 
   } // End of new IMU data
-
+//} //LOOP
   // Medium loop 7.5Hz
   if (loop_counter >= 15)
   {
@@ -593,4 +661,3 @@ void loop()
 #endif
   }  // End of slow loop
 }
-
