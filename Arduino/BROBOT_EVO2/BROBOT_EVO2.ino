@@ -80,7 +80,7 @@
 // Default control terms for EVO 2
 #define KP 0.32 //0.4 //0.32 | dt 25ms = 0.8
 #define KD 0.05 //0.15 //0.050 | dt 25ms = 0.175
-#define KP_THROTTLE 0.07 //0.080, 0.01 | dt 25ms =  .... 0.107842223159323 ... 0.07
+#define KP_THROTTLE 0.075 //0.080, 0.01 | dt 25ms =  .... 0.107842223159323 ... 0.07
 #define KI_THROTTLE 0.025 //0.1, 0.05 | dt 25ms = ... 0.0712804465476108 ... 0.025
 #define KP_POSITION 0.01 //0.06
 #define KD_POSITION 0.02 //0.45
