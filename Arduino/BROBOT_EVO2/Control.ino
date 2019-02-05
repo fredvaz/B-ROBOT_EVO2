@@ -4,7 +4,7 @@
 // Control functions (PID controls, Steppers control...)
 
 // PD controller implementation(Proportional, derivative). DT in seconds
-float stabilityPDControl(float DT, float input, float setPoint,  float Kp, float Kd)
+float stabilityPDControl(float DT, float input, float setPoint,  float Kp, float Kd, float velocity)
 {
   float error;
   float output;
@@ -49,7 +49,7 @@ float stabilityPDControl(float DT, float input, float setPoint,  float Kp, float
   Serial.write(data_w[1]);
 
   //Encode data
-  data = int16_t(output*1000);
+  data = int16_t(velocity*1000); // output
   // Prepare data
   data_w[0] = data;
   data_w[1] = data >> 8;

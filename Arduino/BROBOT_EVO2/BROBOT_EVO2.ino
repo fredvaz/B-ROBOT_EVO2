@@ -78,9 +78,9 @@
 #define MAX_TARGET_ANGLE_PRO 26   // Max recommended value: 32
 
 // Default control terms for EVO 2
-#define KP 0.32 //0.4 //0.32 | dt 25ms = 0.8
-#define KD 0.05 //0.15 //0.050 | dt 25ms = 0.175
-#define KP_THROTTLE 0.075 //0.080, 0.01 | dt 25ms =  .... 0.107842223159323 ... 0.07
+#define KP 0.32 //0.4 //0.32 | dt 25ms = 0.8 ... 0.32
+#define KD 0.05 //0.15 //0.050 | dt 25ms = 0.175 ... 0.05
+#define KP_THROTTLE 0.055 //0.080, 0.01 | dt 25ms =  .... 0.107842223159323 ... 0.07
 #define KI_THROTTLE 0.025 //0.1, 0.05 | dt 25ms = ... 0.0712804465476108 ... 0.025
 #define KP_POSITION 0.01 //0.06
 #define KD_POSITION 0.02 //0.45
@@ -533,7 +533,7 @@ void loop()
     control_output += stabilityControlWithSimulink(dt, angle_adjusted, target_angle); // angle_adjusted_filtered
     control_output = constrain(control_output, -MAX_CONTROL_OUTPUT, MAX_CONTROL_OUTPUT); // Limit max output from control
 #else
-    control_output += stabilityPDControl(dt, angle_adjusted, target_angle, Kp, Kd);
+    control_output += stabilityPDControl(dt, angle_adjusted, target_angle, Kp, Kd, estimated_speed_filtered);
     control_output = constrain(control_output, -MAX_CONTROL_OUTPUT, MAX_CONTROL_OUTPUT); // Limit max output from control
 #endif
     // /* ---------------------------- ADDED ------------------------------------*/
