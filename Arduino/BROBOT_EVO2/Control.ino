@@ -1,10 +1,9 @@
-// BROBOT EVO 2 by JJROBOTS
 // SELF BALANCE ARDUINO ROBOT WITH STEPPER MOTORS
 // License: GPL v2
 // Control functions (PID controls, Steppers control...)
 
 // PD controller implementation(Proportional, derivative). DT in seconds
-float stabilityPDControl(float DT, float input, float setPoint,  float Kp, float Kd, float velocity)
+float stabilityPDControl(float DT, float theta, float setTheta,  float Kp, float Kd)
 {
   float error;
   float output;
@@ -12,35 +11,17 @@ float stabilityPDControl(float DT, float input, float setPoint,  float Kp, float
   int16_t data = 0;
   int8_t data_w[2];
 
-  error = setPoint - input;
+  error = setTheta - theta;
 
-  // Kd is implemented in two parts
-  //    The biggest one using only the input (sensor) part not the SetPoint input-input(t-1).
-  //    And the second using the setpoint to make it a bit more agressive   setPoint-setPoint(t-1)
-  float Kd_setPoint = constrain((setPoint - setPointOld), -8, 8); // We limit the input part...
-  output = Kp * error + (Kd * Kd_setPoint - Kd * (input - PID_errorOld)) / DT;
+  float setThetaLim = constrain((setTheta - setThetaOld), -8, 8);
+  output = Kp * error + (Kd * setThetaLim - Kd * (theta - thetaOld)) / DT;
 
-  // BEGIN PID TEST - ADDED
-  // PID_errorSum += constrain(error, -ITERM_MAX_ERROR, ITERM_MAX_ERROR);
-  // PID_errorSum = constrain(PID_errorSum, -ITERM_MAX, ITERM_MAX);
-  //
-  // float _Kp = 0.4;
-  // float _Ki = 0.05;
-  // float _Kd = 0.15;
-  //
-  // output = _Kp * error + _Ki * PID_errorSum * DT + (_Kd * Kd_setPoint - _Kd * (input - PID_errorOld)) / DT;
-  // // END PID TEST
-  //
-  // END - ADDED
-
-  //Serial.print(Kd*(error-PID_errorOld));Serial.print("\t");
-  //PID_errorOld2 = PID_errorOld;
-  PID_errorOld = input;  // error for Kd is only the input component
-  setPointOld = setPoint;
+  thetaOld = theta;
+  setThetaOld = setTheta;
 
   /*                                DEBUG                                     */
   //Encode data
-  data = int16_t(input*1000);
+  data = int16_t(theta*1000);
   // Prepare data
   data_w[0] = data;
   data_w[1] = data >> 8;
@@ -49,7 +30,7 @@ float stabilityPDControl(float DT, float input, float setPoint,  float Kp, float
   Serial.write(data_w[1]);
 
   //Encode data
-  data = int16_t(velocity*1000); // output
+  data = int16_t(output*1000);
   // Prepare data
   data_w[0] = data;
   data_w[1] = data >> 8;
@@ -110,18 +91,16 @@ float stabilityControlWithSimulink(float DT, float input, float setPoint)
 }
 
 // PI controller implementation (Proportional, integral). DT in seconds
-float speedPIControl(float DT, int16_t input, int16_t setPoint,  float Kp, float Ki)
+float speedPIControl(float DT, int16_t speed, int16_t setSpeed,  float Kp, float Ki)
 {
   int16_t error;
   float output;
 
-  error = setPoint - input;
-  PID_errorSum += constrain(error, -ITERM_MAX_ERROR, ITERM_MAX_ERROR);
-  PID_errorSum = constrain(PID_errorSum, -ITERM_MAX, ITERM_MAX);
+  error = setSpeed - speed;
+  errorSum += constrain(error, -ITERM_MAX_ERROR, ITERM_MAX_ERROR);
+  errorSum = constrain(errorSum, -ITERM_MAX, ITERM_MAX);
 
-  //Serial.println(PID_errorSum);
-
-  output = Kp * error + Ki * PID_errorSum * DT; // DT is in miliseconds...
+  output = Kp * error + Ki * errorSum * DT; // DT is in miliseconds...
   return (output);
 }
 

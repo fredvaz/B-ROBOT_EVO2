@@ -1,21 +1,13 @@
-// BROBOT EVO 2 by JJROBOTS
-// SELF BALANCE ARDUINO ROBOT WITH STEPPER MOTORS CONTROLLED WITH YOUR SMARTPHONE
-// JJROBOTS BROBOT KIT: (Arduino Leonardo + BROBOT ELECTRONIC BRAIN SHIELD + STEPPER MOTOR drivers)
-// This code is prepared for new BROBOT shield  with ESP8266 Wifi module
-// Author: JJROBOTS.COM
-// Date: 02/09/2014
-// Updated: 25/06/2017
-// Version: 2.82
+
+// SELF BALANCING ARDUINO ROBOT WITH STEPPER MOTORS CONTROLLED BASED ON BROBOT EVO 2
+
+// Date: 15/11/2018
+// Updated: 02/02/2019
 // License: GPL v2
-// Compiled and tested with Arduino 1.6.8. This new version of code does not need external libraries (only Arduino standard libraries)
-// Project URL: http://jjrobots.com/b-robot-evo-2-much-more-than-a-self-balancing-robot (Features,documentation,build instructions,how it works, SHOP,...)
-// New updates:
-//   - New default parameters specially tuned for BROBOT EVO 2 version (More agile, more stable...)
-//   - New Move mode with position control (for externally programming the robot with a Blockly or pyhton programming interfaces)
-//   - New telemtry packets send to TELEMETRY IP for monitoring Battery, Angle, ... (old battery packets for touch osc not working now)
-//   - Default telemetry server is 192.168.4.2 (first client connected to the robot)
-//  Get the free android app (jjrobots) from google play. For IOS users you need to use TouchOSC App + special template (info on jjrobots page)
-//  Thanks to our users on the forum for the new ideas. Specially sasa999, KomX, ...
+
+// Original Project URL: http://jjrobots.com/b-robot-evo-2-much-more-than-a-self-balancing-robot (Features,documentation,build instructions,how it works, SHOP,...)
+// Modified version: https://github.com/fredvaz/B-ROBOT_EVO2
+// Simulink: https://github.com/fredvaz/self_balancing_robot/tree/cd_version
 
 // The board needs at least 10-15 seconds with no motion (robot steady) at beginning to give good values... Robot move slightly when it´s ready!
 // MPU6050 IMU connected via I2C bus. Angle estimation using complementary filter (fusion between gyro and accel)
@@ -23,49 +15,17 @@
 
 // The robot is OFF when the angle is high (robot is horizontal). When you start raising the robot it
 // automatically switch ON and start a RAISE UP procedure.
-// You could RAISE UP the robot also with the robot arm servo (Servo button on the interface)
 // To switch OFF the robot you could manually put the robot down on the floor (horizontal)
 
-// We use a standard PID controllers (Proportional, Integral derivative controller) for robot stability
-// More info on the project page: How it works page at jjrobots.com
 // We have a PI controller for speed control and a PD controller for stability (robot angle)
 // The output of the control (motors speed) is integrated so it´s really an acceleration not an speed.
 
-// We control the robot from a WIFI module using OSC standard UDP messages
-// You need an OSC app to control de robot (Custom free JJRobots APP for android, and TouchOSC APP for IOS)
-// Join the module Wifi Access Point (by default: JJROBOTS_XX) with your Smartphone/Tablet...
-//   Wifi password: 87654321
-// For TouchOSC users (IOS): Install the BROBOT layout into the OSC app (Touch OSC) and start play! (read the project page)
-// OSC controls:
-//    fader1: Throttle (0.0-1.0) OSC message: /1/fader1
-//    fader2: Steering (0.0-1.0) OSC message: /1/fader2
-//    push1: Move servo arm (and robot raiseup) OSC message /1/push1
-//    if you enable the touchMessage on TouchOSC options, controls return to center automatically when you lift your fingers
-//    PRO mode (PRO button). On PRO mode steering and throttle are more aggressive
-//    PAGE2: PID adjustements [optional][dont touch if you dont know what you are doing...;-) ]
 
 #include <Wire.h>
 
 // Uncomment this line to use SIMULINK PID SIMULATION
 //#define SIMULINK
 
-// Uncomment this line to use ROS compatibility
-#define ROS
-
-// Uncomment this line to use Servo Motors/Robot Arms
-//#define SERVOS_ON
-
-// Uncomment this line to use WIFI
-//#define WIFI_ON
-
-// Uncomment this lines to connect to an external Wifi router (join an existing Wifi network)
-//#define EXTERNAL_WIFI
-//#define WIFI_SSID "YOUR_WIFI"
-//#define WIFI_PASSWORD "YOUR_PASSWORD"
-//#define WIFI_IP "192.168.1.101"  // Force ROBOT IP
-//#define TELEMETRY "192.168.1.38" // Tlemetry server port 2223
-
-#define TELEMETRY "192.168.4.2" // Default telemetry server (first client) port 2223
 
 // NORMAL MODE PARAMETERS (MAXIMUN SETTINGS)
 #define MAX_THROTTLE 550
@@ -98,14 +58,6 @@
 
 #define ANGLE_OFFSET 0.0  // Offset angle for balance (to compensate robot own weight distribution)
                           // 0.0 |  dt 25ms = 1.75 .... Positico Para trás
-
-// Servo definitions
-#define SERVO_AUX_NEUTRO 1500  // Servo neutral position
-#define SERVO_MIN_PULSEWIDTH 700
-#define SERVO_MAX_PULSEWIDTH 2500
-
-#define SERVO2_NEUTRO 1500
-#define SERVO2_RANGE 1400
 
 // Telemetry
 #define TELEMETRY_BATTERY 0
@@ -158,10 +110,9 @@ bool newControlParameters = false;
 bool modifing_control_parameters = false;
 int16_t position_error_sum_M1;
 int16_t position_error_sum_M2;
-float PID_errorSum;
-float PID_errorOld = 0;
-float PID_errorOld2 = 0;
-float setPointOld = 0;
+float errorSum;
+float thetaOld = 0;
+float setThetaOld = 0;
 float target_angle;
 int16_t throttle;
 float steering;
@@ -191,21 +142,6 @@ int16_t actual_robot_speed;        // overall robot speed (measured from stepper
 int16_t actual_robot_speed_Old;
 float estimated_speed_filtered;    // Estimated robot speed
 
-// OSC output variables
-uint8_t OSCpage;
-uint8_t OSCnewMessage;
-float OSCfader[4];
-float OSCxy1_x;
-float OSCxy1_y;
-float OSCxy2_x;
-float OSCxy2_y;
-uint8_t OSCpush[4];
-uint8_t OSCtoggle[4];
-uint8_t OSCmove_mode;
-int16_t OSCmove_speed;
-int16_t OSCmove_steps1;
-int16_t OSCmove_steps2;
-
 
 // INITIALIZATION
 void setup()
@@ -222,7 +158,6 @@ void setup()
 
   Serial.begin(115200); // Serial output to console
   Serial1.begin(115200);
-  //OSC_init();
 
   // Initialize I2C bus (MPU6050 is connected via I2C)
   Wire.begin();
@@ -238,74 +173,8 @@ void setup()
   MPU6050_setup();  // setup MPU6050 IMU
   delay(500);
 
-
-#ifdef WIFI_ON
-  // With the new ESP8266 WIFI MODULE WE NEED TO MAKE AN INITIALIZATION PROCESS
-  Serial.println("WIFI init");
-  Serial1.flush();
-  Serial1.print("+++");  // To ensure we exit the transparent transmision mode
-  delay(100);
-  ESPsendCommand("AT", "OK", 1);
-  ESPsendCommand("AT+RST", "OK", 2); // ESP Wifi module RESET
-  ESPwait("ready", 6);
-  ESPsendCommand("AT+GMR", "OK", 5);
-
-#ifdef EXTERNAL_WIFI
-  ESPsendCommand("AT+CWQAP", "OK", 3);
-  ESPsendCommand("AT+CWMODE=1", "OK", 3);
-  //String auxCommand = (String)"AT+CWJAP="+WIFI_SSID+","+WIFI_PASSWORD;
-  char auxCommand[90] = "AT+CWJAP=\"";
-  strcat(auxCommand, WIFI_SSID);
-  strcat(auxCommand, "\",\"");
-  strcat(auxCommand, WIFI_PASSWORD);
-  strcat(auxCommand, "\"");
-  ESPsendCommand(auxCommand, "OK", 14);
-#ifdef WIFI_IP
-  strcpy(auxCommand, "AT+CIPSTA=\"");
-  strcat(auxCommand, WIFI_IP);
-  strcat(auxCommand, "\"");
-  ESPsendCommand(auxCommand, "OK", 4);
-#endif
-  ESPsendCommand("AT+CIPSTA?", "OK", 4);
-#else  // Deafault : we generate a wifi network
-  Serial1.println("AT+CIPSTAMAC?");
-  ESPgetMac();
-  //Serial.print("MAC:");
-  //Serial.println(MAC);
-  delay(200);
-  ESPsendCommand("AT+CWQAP", "OK", 3);
-  ESPsendCommand("AT+CWMODE=2", "OK", 3); // Soft AP mode
-  // Generate Soft AP. SSID=JJROBOTS, PASS=87654321
-  char *cmd =  "AT+CWSAP=\"JJROBOTS_XX\",\"87654321\",5,3";
-  // Update XX characters with MAC address (last 2 characters)
-  cmd[19] = MAC[10];
-  cmd[20] = MAC[11];
-  ESPsendCommand(cmd, "OK", 6);
-#endif
-  // Start UDP SERVER on port 2222, telemetry port 2223
-  Serial.println("Start UDP server");
-  ESPsendCommand("AT+CIPMUX=0", "OK", 3);  // Single connection mode
-  ESPsendCommand("AT+CIPMODE=1", "OK", 3); // Transparent mode
-  char Telemetry[80];
-  strcpy(Telemetry,"AT+CIPSTART=\"UDP\",\"");
-  strcat(Telemetry,TELEMETRY);
-  strcat(Telemetry,"\",2223,2222,0");
-  ESPsendCommand(Telemetry, "OK", 3);
-#endif
-
   // Calibrate gyros
   MPU6050_calibrate();
-
-#ifdef WIFI_ON
-  ESPsendCommand("AT+CIPSEND", ">", 2); // Start transmission (transparent mode)
-#endif
-
-#ifdef SERVOS_ON
-  // Init servos
-  Serial.println("Servo init");
-  BROBOT_initServo();
-  BROBOT_moveServo1(SERVO_AUX_NEUTRO);
-#endif
 
   // STEPPER MOTORS INITIALIZATION
   //Serial.println("Steppers init");
@@ -335,23 +204,11 @@ void setup()
   {
     setMotorSpeedM1(5);
     setMotorSpeedM2(5);
-  #ifdef SERVOS_ON
-    BROBOT_moveServo1(SERVO_AUX_NEUTRO + 100);
-    BROBOT_moveServo2(SERVO2_NEUTRO + 100);
-  #endif
     delay(200);
     setMotorSpeedM1(-5);
     setMotorSpeedM2(-5);
-  #ifdef SERVOS_ON
-    BROBOT_moveServo1(SERVO_AUX_NEUTRO - 100);
-    BROBOT_moveServo2(SERVO2_NEUTRO - 100);
-  #endif
     delay(200);
   }
-#ifdef SERVOS_ON
-  BROBOT_moveServo1(SERVO_AUX_NEUTRO);
-  BROBOT_moveServo2(SERVO2_NEUTRO);
-#endif
 
 #if TELEMETRY_BATTERY==1
   BatteryValue = BROBOT_readBattery(true);
@@ -368,75 +225,6 @@ void setup()
 // MAIN LOOP
 void loop()
 {
-#ifdef WIFI_ON
-  OSC_MsgRead();  // Read UDP OSC messages
-  if (OSCnewMessage)
-  {
-    OSCnewMessage = 0;
-    if (OSCpage == 1)   // Get commands from user (PAGE1 are user commands: throttle, steering...)
-    {
-      if (modifing_control_parameters)  // We came from the settings screen
-      {
-        OSCfader[0] = 0.5; // default neutral values
-        OSCfader[1] = 0.5;
-        OSCtoggle[0] = 0;  // Normal mode
-        mode = 0;
-        modifing_control_parameters = false;
-      }
-
-      if (OSCmove_mode)
-      {
-        //Serial.print("M ");
-        //Serial.print(OSCmove_speed);
-        //Serial.print(" ");
-        //Serial.print(OSCmove_steps1);
-        //Serial.print(",");
-        //Serial.println(OSCmove_steps2);
-        positionControlMode = true;
-        OSCmove_mode = false;
-        target_steps1 = steps1 + OSCmove_steps1;
-        target_steps2 = steps2 + OSCmove_steps2;
-      }
-      else
-      {
-        positionControlMode = false;
-        throttle = (OSCfader[0] - 0.5) * max_throttle;
-        // We add some exponential on steering to smooth the center band
-        steering = OSCfader[1] - 0.5;
-        if (steering > 0)
-          steering = (steering * steering + 0.5 * steering) * max_steering;
-        else
-          steering = (-steering * steering + 0.5 * steering) * max_steering;
-      }
-
-      if ((mode == 0) && (OSCtoggle[0]))
-      {
-        // Change to PRO mode
-        max_throttle = MAX_THROTTLE_PRO;
-        max_steering = MAX_STEERING_PRO;
-        max_target_angle = MAX_TARGET_ANGLE_PRO;
-        mode = 1;
-      }
-      if ((mode == 1) && (OSCtoggle[0] == 0))
-      {
-        // Change to NORMAL mode
-        max_throttle = MAX_THROTTLE;
-        max_steering = MAX_STEERING;
-        max_target_angle = MAX_TARGET_ANGLE;
-        mode = 0;
-      }
-    }
-    else if (OSCpage == 2) { // OSC page 2
-      // Check for new user control parameters
-      readControlParameters();
-    }
-#if DEBUG==1
-    Serial.print(throttle);
-    Serial.print(" ");
-    Serial.println(steering);
-#endif
-  } // End new OSC message
-#endif
 
   /*                        TO FIX: Control with ROS                          */
   positionControlMode = false; //false;
@@ -533,22 +321,9 @@ void loop()
     control_output += stabilityControlWithSimulink(dt, angle_adjusted, target_angle); // angle_adjusted_filtered
     control_output = constrain(control_output, -MAX_CONTROL_OUTPUT, MAX_CONTROL_OUTPUT); // Limit max output from control
 #else
-    control_output += stabilityPDControl(dt, angle_adjusted, target_angle, Kp, Kd, estimated_speed_filtered);
+    control_output += stabilityPDControl(dt, angle_adjusted, target_angle, Kp, Kd);
     control_output = constrain(control_output, -MAX_CONTROL_OUTPUT, MAX_CONTROL_OUTPUT); // Limit max output from control
 #endif
-    // /* ---------------------------- ADDED ------------------------------------*/
-    // // WIHTOUT SPEED CONTROL
-    // // The self balancing point is adjusted when there is not forward or backwards movement
-    // // This way the robot will always find it's balancing point
-    // // error_ = target_angle - angle_adjusted;
-    // // (-0.5 < error_) && (error_ < 0.5) - em baixos erros
-    // if(true){ // pid_setpoint == 0.0
-    //   if(control_output < 0)
-    //     target_angle += 0.0015;                // Increase the self_balance_pid_setpoint if the robot is still moving forewards
-    //   if(pid_output > 0)
-    //     target_angle -= 0.0015;                //Decrease the self_balance_pid_setpoint if the robot is still moving backwards
-    // }
-    // /* -----------------------------------------------------------------------*/
 
     // The steering part from the user is injected directly to the output
     motor1 = control_output + steering;
@@ -559,10 +334,8 @@ void loop()
     motor2 = constrain(motor2, -MAX_CONTROL_OUTPUT, MAX_CONTROL_OUTPUT);
 
     int angle_ready;
-    if (OSCpush[0])     // If we press the SERVO button we start to move
-      angle_ready = 82;
-    else
-      angle_ready = 74;  // Default angle
+    angle_ready = 74;  // Default angle
+
     if ((angle_adjusted < angle_ready) && (angle_adjusted > -angle_ready)) // Is robot ready (upright?)
     {
       // NORMAL MODE
@@ -576,7 +349,7 @@ void loop()
       digitalWrite(4, HIGH);  // Disable motors
       setMotorSpeedM1(0);
       setMotorSpeedM2(0);
-      PID_errorSum = 0;  // Reset PID I term
+      errorSum = 0;  // Reset PID I term
       Kp = KP_RAISEUP;   // CONTROL GAINS FOR RAISE UP
       Kd = KD_RAISEUP;
       Kp_thr = KP_THROTTLE_RAISEUP;
@@ -585,27 +358,9 @@ void loop()
       steps1 = 0;
       steps2 = 0;
       positionControlMode = false;
-      OSCmove_mode = false;
       throttle = 0;
       steering = 0;
     }
-
-  #ifdef SERVOS_ON
-    // It's necessary move Servo Timers to Arduino MEGA
-    // Push1 Move servo arm
-    if (OSCpush[0])  // Move arm
-    {
-      if (angle_adjusted > -40)
-        BROBOT_moveServo1(SERVO_MIN_PULSEWIDTH);
-      else
-        BROBOT_moveServo1(SERVO_MAX_PULSEWIDTH);
-    }
-    else
-      BROBOT_moveServo1(SERVO_AUX_NEUTRO);
-
-    // Servo2
-    BROBOT_moveServo2(SERVO2_NEUTRO + (OSCfader[2] - 0.5) * SERVO2_RANGE);
-  #endif
 
     // Normal condition?
     if ((angle_adjusted < 56) && (angle_adjusted > -56))
@@ -624,7 +379,10 @@ void loop()
     }
 
   } // End of new IMU data
+
 //} //LOOP
+
+
   // Medium loop 7.5Hz
   if (loop_counter >= 15)
   {
